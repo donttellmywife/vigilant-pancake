@@ -8,9 +8,8 @@ USAGE
 
 Run:
 
-    rake server
+    npm server
 
 Visit the webserver at:
 
     http://localhost:9292
-
