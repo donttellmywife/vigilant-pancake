@@ -66,7 +66,11 @@
         currentTrackUrl: function () {
             var album = this.currentAlbum();
 
-            return album.trackUrlAtIndex(this.get('currentTrackIndex'));
+            if (album) {
+                return album.trackUrlAtIndex(this.get('currentTrackIndex'));
+            } else {
+                return null;
+            }
         },
 
 
@@ -122,6 +126,11 @@
                 this.get('currentTrackIndex'),
                 this
             );
+        },
+
+
+        reset: function () {
+
         }
     })
 
@@ -171,14 +180,72 @@
         },
 
 
+        initialize: function () {
+            _.bindAll(this, 'render');
+            this.template = _.template($('#album-template').html());
+        },
+
+
         select: function() {
             this.collection.trigger('select', this.model);
-            console.log('triggered select', this.model);
         }
     });
 
-    window.PlaylistAlbumView = AlbumView.extend({
 
+    window.PlaylistAlbumView = AlbumView.extend({
+        events: {
+            'click .queue.remove': 'removeFromPlaylist'
+        },
+
+
+        initialize: function () {
+            _.bindAll(this, 'render',
+                            'remove',
+                            'updateState',
+                            'updateTrack');
+
+            this.player = this.options.player;
+            this.player.bind('change:state', this.updateState);
+            this.player.bind('change:currentTrackIndex', this.updateTrack);
+
+            this.model.bind('remove', this.remove);
+
+            this.template = _.template($('#album-template').html());
+        },
+
+
+        render: function () {
+            $(this.el).html(this.template(this.model.toJSON()));
+
+            this.updateTrack();
+
+            return this;
+        },
+
+
+        removeFromPlaylist: function () {
+            this.options.playlist.remove(this.model);
+            this.player.reset();
+        },
+
+
+        updateState: function () {
+            var isAlbumCurrent = (this.player.currentAlbum() === this.model);
+            $(this.el).toggleClass('current', isAlbumCurrent);
+        },
+
+
+        updateTrack: function () {
+            var isAlbumCurrent = (this.player.currentAlbum() === this.model);
+            if (isAlbumCurrent) {
+                var currentTrackIndex = this.player.get('currentTrackIndex');
+                this.$('li').each(function(index, el) {
+                    $(el).toggleClass('current', index == currentTrackIndex);
+                });
+            }
+
+            this.updateState();
+        }
     });
 
 
@@ -186,14 +253,32 @@
         tagName: 'section',
         className: 'playlist',
 
+        events: {
+            'click .play': 'play',
+            'click .pause': 'pause',
+            'click .next': 'nextTrack',
+            'click .prev': 'prevTrack'
+        },
+
 
         initialize: function () {
-            _.bindAll(this, 'render');
+            _.bindAll(this, 'render',
+                            'queueAlbum',
+                            'renderAlbum',
+                            'updateState',
+                            'updateTrack');
+
             this.template = _.template($('#playlist-template').html());
             this.collection.bind('reset', this.render);
+            this.collection.bind('add', this.renderAlbum);
 
             this.player = this.options.player;
+            this.player.bind('change:state', this.updateState);
+            this.player.bind('change:currentTrackIndex', this.updateTrack);
+            this.createAudio();
+
             this.library = this.options.library;
+            this.library.bind('select', this.queueAlbum);
         },
 
 
@@ -204,6 +289,64 @@
             this.$('button.pause').toggle(this.player.isPlaying());
 
             return this;
+        },
+
+
+        queueAlbum: function (album) {
+            this.collection.add(album);
+        },
+
+
+        renderAlbum: function (album) {
+            var view = new PlaylistAlbumView({
+                model: album,
+                player: this.player,
+                playlist: this.collection
+            });
+
+            this.$('ul').append(view.render().el);
+        },
+
+
+        createAudio: function () {
+            this.audio = new Audio();
+        },
+
+
+        updateTrack: function () {
+            this.audio.src = this.player.currentTrackUrl();
+            if (this.player.get('state') === 'play') {
+                this.audio.play();
+            } else {
+                this.audio.pause;
+            }
+        },
+
+
+        updateState: function () {
+            this.updateTrack();
+            this.$('button.play').toggle(this.player.isStopped());
+            this.$('button.pause').toggle(this.player.isPlaying());
+        },
+
+
+        play: function () {
+            this.player.play();
+        },
+
+
+        pause: function () {
+            this.player.pause();
+        },
+
+
+        nextTrack: function () {
+            this.player.nextTrack();
+        },
+
+
+        prevTrack: function () {
+            this.player.prevTrack();
         }
     })
 
@@ -245,6 +388,7 @@
             'blank': 'blank'
         },
 
+
         initialize: function() {
             this.playlistView = new PlaylistView({
                 collection: window.player.playlist,
@@ -256,6 +400,7 @@
                 collection: window.library
             });
         },
+
 
         home: function() {
             var $container = $('#container');
